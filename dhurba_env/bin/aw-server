@@ -1,0 +1,5 @@
+#!/root/activitywatch/dhurba_env/bin/python
+from aw_server import main
+
+if __name__ == '__main__':
+    main()

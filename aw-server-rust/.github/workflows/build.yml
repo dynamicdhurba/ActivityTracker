@@ -1,0 +1,117 @@
+name: Build
+
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+    branches: [ master ]
+
+jobs:
+  build:
+    name: Build on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macOS-latest]
+
+    steps:
+    - uses: actions/checkout@v2
+    - name: Set up Rust nightly
+      uses: actions-rs/toolchain@v1
+      with:
+        profile: minimal
+        toolchain: nightly
+        override: true
+    - name: Cache cargo build
+      uses: actions/cache@v1
+      env:
+        cache-name: cargo-build-target-2
+      with:
+        path: target
+        key: ${{ runner.os }}-${{ env.cache-name }}-${{ hashFiles('**/Cargo.lock') }}
+        restore-keys: |
+          ${{ runner.os }}-${{ env.cache-name }}-
+    - name: Build
+      run: cargo build --workspace --verbose
+    - name: Run tests
+      run: cargo test --workspace --verbose
+
+  build-coverage:
+    name: Build with coverage
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v2
+    - name: Set up Rust nightly
+      uses: actions-rs/toolchain@v1
+      with:
+        profile: minimal
+        toolchain: nightly
+        override: true
+    - name: Cache cargo build
+      uses: actions/cache@v1
+      env:
+        cache-name: cargo-build-target-coverage
+      with:
+        path: target
+        key: ${{ runner.os }}-${{ env.cache-name }}-${{ hashFiles('**/Cargo.lock') }}
+        restore-keys: |
+          ${{ runner.os }}-${{ env.cache-name }}-
+    - name: Download grcov
+      run: |
+        curl -L https://github.com/mozilla/grcov/releases/latest/download/grcov-linux-x86_64.tar.bz2 | tar jxf -
+    - name: Run tests with coverage
+      run: |
+        # Add cwd to path to find grcov
+        export PATH=$PATH:.
+        make coverage-lcov COVERAGE_CACHE=1
+    - name: Upload coverage files
+      run: bash <(curl -s https://codecov.io/bash);
+
+  build-android:
+    name: Build for Android
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v2
+    - name: Set up Rust nightly
+      uses: actions-rs/toolchain@v1
+      with:
+        profile: minimal
+        toolchain: nightly
+        override: true
+    - name: Cache cargo build
+      uses: actions/cache@v1
+      env:
+        cache-name: cargo-build-target-android
+      with:
+        path: target
+        key: ${{ runner.os }}-${{ env.cache-name }}-${{ hashFiles('**/Cargo.lock') }}
+        restore-keys: |
+          ${{ runner.os }}-${{ env.cache-name }}-
+    - name: Install NDK
+      run: |
+        ./install-ndk.sh
+    - name: Build
+      run: |
+        export ANDROID_NDK_HOME=`pwd`/NDK
+        ./compile-android.sh
+
+  lint:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v2
+    - name: Set up Rust nightly
+      uses: actions-rs/toolchain@v1
+      with:
+        profile: minimal
+        toolchain: nightly
+        components: clippy, rustfmt
+        override: true
+    - name: Check formatting
+      if: always()
+      run: cargo fmt -- --check
+    - name: Run clippy  # Doesn't fail build
+      if: always()
+      run: cargo clippy
